@@ -13,7 +13,7 @@ on:
   schedule:
     # 每天 21:37 UTC 检查
     # 北京时间次日 05:37
-    - cron: "16 */1 * * *"
+    - cron: "16 */6 * * *"
 
 permissions:
   contents: read
