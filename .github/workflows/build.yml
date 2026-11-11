@@ -1,0 +1,121 @@
+
+name: Build Magpie TUI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .github/workflows/build.yml
+
+  workflow_dispatch:
+
+  schedule:
+    # 每天 21:37 UTC 检查
+    # 北京时间次日 05:37
+    - cron: "37 21 * * *"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: magpie-tui-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check upstream versions
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/magpie-tui"
+
+          MAGPIE_TAG="ghcr.io/yetone/magpie:daily"
+          BUN_TAG="oven/bun:1"
+
+          MAGPIE_DIGEST=$(
+            docker buildx imagetools inspect "$MAGPIE_TAG" |
+            awk '/^Digest:/ {print $2; exit}'
+          )
+
+          BUN_DIGEST=$(
+            docker buildx imagetools inspect "$BUN_TAG" |
+            awk '/^Digest:/ {print $2; exit}'
+          )
+
+          [[ "$MAGPIE_DIGEST" == sha256:* ]]
+          [[ "$BUN_DIGEST" == sha256:* ]]
+
+          FILE_HASH=$(
+            sha256sum Dockerfile .github/workflows/build.yml |
+            sha256sum | cut -d' ' -f1
+          )
+
+          BUILD_ID=$(
+            printf '%s\n' \
+              "$MAGPIE_DIGEST" \
+              "$BUN_DIGEST" \
+              "$FILE_HASH" |
+            sha256sum | cut -c1-16
+          )
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "magpie=ghcr.io/yetone/magpie@$MAGPIE_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "bun=oven/bun@$BUN_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "build_tag=build-$BUILD_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing image
+        id: check
+        shell: bash
+        run: |
+          IMAGE="${{ steps.refs.outputs.image }}"
+          TAG="${{ steps.refs.outputs.build_tag }}"
+
+          if docker buildx imagetools inspect \
+            "$IMAGE:$TAG" >/dev/null 2>&1; then
+            echo "needs_build=false" >> "$GITHUB_OUTPUT"
+            echo "Image already exists. Skipping."
+          else
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        if: steps.check.outputs.needs_build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          pull: true
+          provenance: false
+          build-args: |
+            MAGPIE_IMAGE=${{ steps.refs.outputs.magpie }}
+            BUN_IMAGE=${{ steps.refs.outputs.bun }}
+          tags: |
+            ${{ steps.refs.outputs.image }}:latest
+            ${{ steps.refs.outputs.image }}:${{ steps.refs.outputs.build_tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Magpie with Bun and tmux
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
