@@ -13,7 +13,7 @@ on:
   schedule:
     # 每天 21:37 UTC 检查
     # 北京时间次日 05:37
-    - cron: "37 21 * * *"
+    - cron: "16 */1 * * *"
 
 permissions:
   contents: read
@@ -50,7 +50,7 @@ jobs:
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           IMAGE="ghcr.io/${OWNER}/magpie-tui"
 
-          MAGPIE_TAG="ghcr.io/yetone/magpie:daily"
+          MAGPIE_TAG="ghcr.io/yetone/magpie:latest"
           BUN_TAG="oven/bun:1"
 
           MAGPIE_DIGEST=$(
