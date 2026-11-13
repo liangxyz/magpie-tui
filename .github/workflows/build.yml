@@ -53,14 +53,15 @@ jobs:
           MAGPIE_TAG="ghcr.io/yetone/magpie:latest"
           BUN_TAG="oven/bun:1"
 
+          # Read the complete output to avoid SIGPIPE under pipefail.
           MAGPIE_DIGEST=$(
             docker buildx imagetools inspect "$MAGPIE_TAG" |
-            awk '/^Digest:/ {print $2; exit}'
+            awk '/^Digest:/ {print $2}'
           )
 
           BUN_DIGEST=$(
             docker buildx imagetools inspect "$BUN_TAG" |
-            awk '/^Digest:/ {print $2; exit}'
+            awk '/^Digest:/ {print $2}'
           )
 
           [[ "$MAGPIE_DIGEST" == sha256:* ]]
